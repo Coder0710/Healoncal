@@ -1,0 +1,1331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>AI Skin Analysis - Multi-Angle Capture (AUTO-START v3.0)</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .camera-container {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            border-radius: 16px;
+            overflow: hidden;
+            background: #000;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
+        
+        #video {
+            width: 100%;
+            height: auto;
+            display: block;
+            transform: scaleX(-1);
+            min-height: 300px;
+        }
+        
+        .face-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 180px;
+            height: 220px;
+            border: 3px dashed rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+        
+        .instruction-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            border-radius: 16px 16px 0 0;
+        }
+        
+        .controls-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .capture-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid white;
+            background: #3B82F6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+        
+        .capture-btn:hover {
+            transform: scale(1.1);
+            background: #2563EB;
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.6);
+        }
+        
+        .capture-btn:disabled {
+            background: #6B7280;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 1rem;
+        }
+        
+        .step-number {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .step-active { background: #3B82F6; }
+        .step-completed { background: #10B981; }
+        .step-pending { background: #6B7280; }
+        
+        .captured-images {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .captured-preview {
+            border-radius: 8px;
+            overflow: hidden;
+            background: #f3f4f6;
+            aspect-ratio: 1;
+            position: relative;
+        }
+        
+        .captured-preview img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .captured-preview.empty {
+            border: 2px dashed #d1d5db;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        
+        .analysis-progress {
+            padding: 2.5rem;
+            text-align: center;
+            background: white;
+            border-radius: 1rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .loader-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            height: 60px;
+            margin-bottom: 1.5rem;
+        }
+        
+        .loader-circle {
+            width: 12px;
+            height: 12px;
+            background-color: #4f46e5;
+            border-radius: 50%;
+            display: inline-block;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loader-circle:nth-child(1) { animation-delay: -0.32s; }
+        .loader-circle:nth-child(2) { animation-delay: -0.16s; }
+        .loader-circle:nth-child(3) { animation-delay: -0.08s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { 
+                transform: scale(0);
+                opacity: 0.4;
+            } 
+            40% { 
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #f3f4f6;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 1.5rem 0;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4f46e5, #7c3aed);
+            width: 0%;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);
+        }
+
+        /* Pulse animation for Start Analysis button */
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            }
+            70% {
+                transform: scale(1.05);
+                box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+            }
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="container mx-auto px-4 py-6">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">AI Skin Analysis</h1>
+            <p class="text-gray-600">Capture images from all angles, then get your complete skin analysis</p>
+        </div>
+
+        <!-- Step Progress -->
+        <div class="max-w-2xl mx-auto mb-8">
+            <div id="step-indicators">
+                <div class="step-indicator" id="step-front">
+                    <div class="step-number step-active" id="step-front-number">1</div>
+                    <div>
+                        <div class="font-semibold text-white">Front View</div>
+                        <div class="text-sm text-gray-300">Look straight ahead</div>
+                    </div>
+                </div>
+                <div class="step-indicator" id="step-left">
+                    <div class="step-number step-pending" id="step-left-number">2</div>
+                    <div>
+                        <div class="font-semibold text-white">Left Profile</div>
+                        <div class="text-sm text-gray-300">Turn head 45° left</div>
+                    </div>
+                </div>
+                <div class="step-indicator" id="step-right">
+                    <div class="step-number step-pending" id="step-right-number">3</div>
+                    <div>
+                        <div class="font-semibold text-white">Right Profile</div>
+                        <div class="text-sm text-gray-300">Turn head 45° right</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Camera Section -->
+        <div id="camera-section" class="max-w-2xl mx-auto mb-8">
+            <div class="camera-container bg-black rounded-lg overflow-hidden">
+                <video id="video" autoplay playsinline muted class="w-full h-auto"></video>
+                
+                <div id="camera-overlays" class="absolute inset-0">
+                    <div class="face-guide absolute inset-0 flex items-center justify-center">
+                        <div class="w-64 h-80 border-2 border-white border-opacity-50 rounded-full"></div>
+                    </div>
+                    
+                    <!-- Status message overlay -->
+                    <div id="status-message" class="absolute inset-x-0 top-4 flex justify-center">
+                        <div id="status-text" class="bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg text-center max-w-xs">
+                            Position your face in the frame
+                        </div>
+                    </div>
+                    
+                    <!-- Camera feedback indicators -->
+                    <div id="camera-feedback" class="absolute bottom-4 left-0 right-0 flex justify-center space-x-4">
+                        <div id="stability-indicator" class="flex items-center bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-sm">
+                            <div class="w-2 h-2 rounded-full bg-yellow-500 mr-2"></div>
+                            <span>Hold camera steady</span>
+                        </div>
+                        <div id="lighting-indicator" class="flex items-center bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-sm">
+                            <div class="w-2 h-2 rounded-full bg-yellow-500 mr-2"></div>
+                            <span>Improve lighting</span>
+                        </div>
+                    </div>
+                
+                <div id="camera-loading" class="camera-loading">
+                    <div class="spinner"></div>
+                    <p>Initializing camera...</p>
+                </div>
+                
+                <div id="camera-error" class="camera-error" style="display: none;">
+                    <p>Camera access denied or not available.</p>
+                    <button id="retry-camera" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Retry Camera
+                    </button>
+                </div>
+                
+                <div id="camera-overlays" style="display: none;">
+                    <div class="instruction-overlay">
+                        <h3 id="current-instruction" class="text-lg font-semibold mb-2">
+                            Position your face straight ahead
+                        </h3>
+                        <p id="instruction-detail" class="text-sm opacity-75">
+                            Center your face in the oval guide
+                        </p>
+                    </div>
+
+                    <div class="face-guide"></div>
+
+                    <div class="controls-overlay">
+                        <button id="capture-btn" class="capture-btn">
+                            <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586l-.707-.707A1 1 0 0013 4H7a1 1 0 00-.707.293L5.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                        <p class="text-white text-sm mt-3 opacity-75">Click to capture</p>
+                    </div>
+                </div>
+
+                <div id="manual-analysis-section" class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-80" style="display: none;">
+                    <div class="text-center text-white">
+                        <h3 class="text-xl font-bold mb-4">All Images Captured!</h3>
+                        <p class="mb-6">Ready to start your skin analysis?</p>
+                        <button id="manual-start-analysis" class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg font-semibold transition-colors">
+                            Start Analysis Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Captured Images Preview -->
+            <div id="captured-section" class="mt-6" style="display: none;">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Captured Images</h3>
+                <div class="captured-images">
+                    <div class="captured-preview empty" id="preview-front">
+                        <span>Front</span>
+                    </div>
+                    <div class="captured-preview empty" id="preview-left">
+                        <span>Left</span>
+                    </div>
+                    <div class="captured-preview empty" id="preview-right">
+                        <span>Right</span>
+                    </div>
+                </div>
+                <button id="start-analysis-btn" class="w-full mt-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors" style="display: none;">
+                    Start Analysis
+                </button>
+            </div>
+        </div>
+
+        <!-- Analysis Progress -->
+        <div id="analysis-section" class="max-w-2xl mx-auto" style="display: none;">
+            <div class="analysis-progress bg-white rounded-xl shadow-lg p-8 text-center">
+                <!-- Animated Loader -->
+                <div class="loader-container mx-auto mb-6">
+                    <div class="loader-circle"></div>
+                    <div class="loader-circle"></div>
+                    <div class="loader-circle"></div>
+                    <div class="loader-circle"></div>
+                </div>
+                
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Analyzing Your Skin</h2>
+                <p id="analysis-status" class="text-lg text-gray-600 mb-4">Processing your images...</p>
+                
+                <!-- Progress Bar -->
+                <div class="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
+                    <div id="progress-fill" class="bg-gradient-to-r from-blue-500 to-indigo-600 h-full rounded-full transition-all duration-500 ease-out" style="width: 0%;"></div>
+                </div>
+                
+                <div class="flex justify-between text-sm text-gray-500 mb-6">
+                    <span>0%</span>
+                    <span id="progress-text">0%</span>
+                    <span>100%</span>
+                </div>
+                
+                <p id="analysis-detail" class="text-sm text-gray-500">
+                    <span class="inline-block animate-pulse">•</span> Analyzing skin texture and tone
+                </p>
+                <p id="analysis-step" class="text-xs text-gray-400 mt-2">Step 1 of 4: Initializing analysis...</p>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results-section" class="max-w-4xl mx-auto" style="display: none;">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-center mb-6">Your Skin Analysis Results</h2>
+                <div id="results-content" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Results will be populated here -->
+                </div>
+                <div class="text-center mt-8">
+                    <button id="new-analysis-btn" class="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors">
+                        Start New Analysis
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements - Single source of truth for all DOM references
+        
+        // Application State
+        const state = {
+            currentStep: 0,
+            steps: ['front', 'left', 'right'],
+            captures: {},
+            socket: null,
+            stream: null,
+            clientId: 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+            allCapturesComplete: false,
+            analysisStarted: false
+        };
+
+        // Instructions for each step
+        const stepInstructions = {
+            front: {
+                title: "Position your face straight ahead",
+                detail: "Look directly at the camera and center your face in the oval"
+            },
+            left: {
+                title: "Turn your head 45° to the left",
+                detail: "Keep your face in the oval while turning left"
+            },
+            right: {
+                title: "Turn your head 45° to the right", 
+                detail: "Keep your face in the oval while turning right"
+            }
+        };
+
+        // Initialize DOM Elements after the page loads
+        let video, cameraLoading, cameraError, cameraOverlays, captureBtn, currentInstruction, instructionDetail;
+        let capturedSection, startAnalysisBtn, analysisSection, progressFill, analysisStatus, analysisDetail;
+        let resultsSection, newAnalysisBtn, manualAnalysisSection, manualStartAnalysisBtn;
+        
+        function initializeDOMElements() {
+            video = document.getElementById('video');
+            cameraLoading = document.getElementById('camera-loading');
+            cameraError = document.getElementById('camera-error');
+            cameraOverlays = document.getElementById('camera-overlays');
+            captureBtn = document.getElementById('capture-btn');
+            currentInstruction = document.getElementById('current-instruction');
+            instructionDetail = document.getElementById('instruction-detail');
+            capturedSection = document.getElementById('captured-section');
+            startAnalysisBtn = document.getElementById('start-analysis-btn');
+            analysisSection = document.getElementById('analysis-section');
+            progressFill = document.getElementById('progress-fill');
+            analysisStatus = document.getElementById('analysis-status');
+            analysisDetail = document.getElementById('analysis-detail');
+            resultsSection = document.getElementById('results-section');
+            newAnalysisBtn = document.getElementById('new-analysis-btn');
+            manualAnalysisSection = document.getElementById('manual-analysis-section');
+            manualStartAnalysisBtn = document.getElementById('manual-start-analysis');
+        }
+
+        // Initialize Application
+        async function initializeApp() {
+            console.log('🚀 ===== AUTO-START VERSION v3.0 LOADED ===== 🚀');
+            console.log('✅ DUPLICATES REMOVED - Only optimized version remains');
+            console.log('⚡ AUTO-START ENABLED - Analysis starts automatically after captures');
+            console.log('🔧 Version: Auto-Start v3.0 - Parallel processing, no manual clicks');
+            console.log('⏰ Timestamp:', new Date().toISOString());
+            console.log('📁 File: live_capture_improved.html (ONLY FILE)');
+            console.log('🎯 Expected Flow: Capture → Auto-Start → Fast Parallel Analysis');
+            console.log('Initializing AI Skin Analysis app...');
+            initializeDOMElements(); // Initialize all DOM elements first
+            setupEventListeners();
+            await initializeCamera();
+            await connectWebSocket();
+            updateCurrentStep();
+            
+            // Initialize capture button state
+            updateCaptureButtonState();
+        }
+        
+        function updateCaptureButtonState() {
+            if (!captureBtn) {
+                console.error('Capture button not found!');
+                return;
+            }
+            
+            // Enable/disable based on camera state
+            const isCameraReady = video && video.readyState >= 2; // HAVE_CURRENT_DATA
+            captureBtn.disabled = !isCameraReady;
+            
+            // Update button appearance
+            captureBtn.innerHTML = `
+                <svg class="w-8 h-8 ${isCameraReady ? 'text-white' : 'text-gray-400'}" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586l-.707-.707A1 1 0 0013 4H7a1 1 0 00-.707.293L5.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                </svg>`;
+        }
+
+        // Setup Event Listeners
+        function setupEventListeners() {
+            if (captureBtn) {
+                captureBtn.addEventListener('click', handleCapture);
+            }
+            if (startAnalysisBtn) {
+                startAnalysisBtn.addEventListener('click', startAnalysis);
+            }
+            if (newAnalysisBtn) {
+                newAnalysisBtn.addEventListener('click', startNewAnalysis);
+            }
+            if (manualStartAnalysisBtn) {
+                manualStartAnalysisBtn.addEventListener('click', startAnalysis);
+            }
+        }
+
+        // Initialize Camera
+        async function initializeCamera() {
+            try {
+                showCameraLoading();
+                
+                if (state.stream) {
+                    state.stream.getTracks().forEach(track => track.stop());
+                }
+
+                state.stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+
+                video.srcObject = state.stream;
+                
+                await new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play().then(resolve).catch(console.error);
+                    };
+                });
+
+                showCameraReady();
+                
+            } catch (error) {
+                console.error('Camera initialization error:', error);
+                showCameraError(error);
+            }
+        }
+
+        function showCameraLoading() {
+            cameraLoading.style.display = 'flex';
+            cameraOverlays.style.display = 'none';
+            video.style.display = 'none';
+            manualAnalysisSection.style.display = 'none'; // Hide manual button
+        }
+
+        function showCameraReady() {
+            console.log('Showing camera ready state');
+            
+            if (cameraLoading) cameraLoading.style.display = 'none';
+            if (cameraError) cameraError.style.display = 'none';
+            if (video) video.style.display = 'block';
+            if (cameraOverlays) cameraOverlays.style.display = 'block';
+            
+            // Make sure capture button is visible and enabled
+            if (captureBtn) {
+                captureBtn.style.display = 'flex';
+                captureBtn.disabled = false;
+                captureBtn.innerHTML = `
+                    <svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586l-.707-.707A1 1 0 0013 4H7a1 1 0 00-.707.293L5.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                    </svg>`;
+            }
+            
+            // Ensure camera overlays are visible
+            const overlays = document.querySelectorAll('#camera-overlays');
+            overlays.forEach(overlay => {
+                overlay.style.display = 'block';
+            });
+            
+            // Start monitoring camera feed
+            startMonitoringCamera();
+            
+            console.log('Camera ready, capture button should be visible');
+        }
+
+        function showCameraError(error) {
+            cameraLoading.innerHTML = `
+                <div class="text-center text-white">
+                    <div class="text-red-400 mb-4">
+                        <svg class="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                        </svg>
+                    </div>
+                    <p class="text-lg font-medium mb-2">Camera Access Required</p>
+                    <p class="text-sm text-gray-300">Please enable camera access and refresh the page</p>
+                </div>
+            `;
+            manualAnalysisSection.style.display = 'none'; // Hide manual button
+        }
+
+        // WebSocket Connection
+        async function connectWebSocket() {
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+                const wsUrl = `${protocol}${window.location.host}/ws/live-capture/${state.clientId}`;
+                
+                state.socket = new WebSocket(wsUrl);
+                
+                state.socket.onopen = () => {
+                    console.log('WebSocket connected');
+                    state.socket.send(JSON.stringify({
+                        type: 'register',
+                        client_id: state.clientId
+                    }));
+                };
+                
+                state.socket.onmessage = handleWebSocketMessage;
+                state.socket.onclose = () => console.log('WebSocket disconnected');
+                state.socket.onerror = (error) => console.error('WebSocket error:', error);
+                
+            } catch (error) {
+                console.error('WebSocket connection failed:', error);
+            }
+        }
+
+        // Handle WebSocket Messages
+        function handleWebSocketMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('🔔 [WEBSOCKET] Message received:', data.type, data);
+                
+                switch (data.type) {
+                    case 'capture_success':
+                        console.log('📸 [WEBSOCKET] Handling capture_success');
+                        handleCaptureSuccess(data);
+                        break;
+                    case 'capture_error':
+                        console.log('❌ [WEBSOCKET] Handling capture_error');
+                        handleCaptureError(data);
+                        break;
+                    case 'capture_instruction':
+                        console.log('📋 [WEBSOCKET] Handling capture_instruction');
+                        handleCaptureInstruction(data);
+                        break;
+                    case 'all_captures_complete':
+                        console.log('🎉 [WEBSOCKET] ✅ RECEIVED all_captures_complete - calling handler!');
+                        handleAllCapturesComplete(data);
+                        break;
+                    case 'analysis_started':
+                        console.log('🚀 [WEBSOCKET] Handling analysis_started');
+                        handleAnalysisStarted(data);
+                        break;
+                    case 'analysis_progress':
+                        console.log('⚡ [WEBSOCKET] Handling analysis_progress');
+                        updateAnalysisProgress(data);
+                        break;
+                    case 'analysis_complete':
+                        console.log('✅ [WEBSOCKET] Handling analysis_complete');
+                        showAnalysisResults(data.results);
+                        break;
+                    case 'error':
+                        console.log('💥 [WEBSOCKET] Handling error');
+                        handleError(data);
+                        break;
+                    case 'pong':
+                        console.log('🏓 [WEBSOCKET] Received pong - connection alive');
+                        break;
+                    default:
+                        console.log('❓ [WEBSOCKET] Unhandled message type:', data.type);
+                }
+            } catch (error) {
+                console.error('💥 [WEBSOCKET] Error handling message:', error);
+                console.error('Raw event data:', event.data);
+            }
+        }
+
+        // Check camera stability and image quality in real-time
+        let lastFrameTime = 0;
+        let lastFrameData = null;
+        let isMonitoring = false;
+        
+        function startMonitoringCamera() {
+            if (isMonitoring) return;
+            isMonitoring = true;
+            
+            const checkStability = () => {
+                if (!isMonitoring || !video.videoWidth) {
+                    isMonitoring = false;
+                    return;
+                }
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Check lighting
+                const brightness = getImageBrightness(canvas);
+                const lightingIndicator = document.getElementById('lighting-indicator');
+                if (brightness < 50 || brightness > 200) {
+                    lightingIndicator.classList.remove('hidden');
+                    lightingIndicator.querySelector('span').textContent = 
+                        brightness < 50 ? 'Image too dark' : 'Image too bright';
+                } else {
+                    lightingIndicator.classList.add('hidden');
+                }
+                
+                // Check stability by comparing frames
+                const currentTime = Date.now();
+                if (lastFrameData && currentTime - lastFrameTime > 300) { // Check every 300ms
+                    const diff = calculateFrameDifference(lastFrameData, canvas);
+                    const stabilityIndicator = document.getElementById('stability-indicator');
+                    
+                    if (diff > 15) { // Threshold for movement detection
+                        stabilityIndicator.classList.remove('hidden');
+                        stabilityIndicator.querySelector('span').textContent = 'Hold camera steady';
+                    } else {
+                        stabilityIndicator.classList.add('hidden');
+                    }
+                }
+                
+                // Store current frame for next comparison
+                lastFrameData = canvas;
+                lastFrameTime = currentTime;
+                
+                if (isMonitoring) {
+                    requestAnimationFrame(checkStability);
+                }
+            };
+            
+            checkStability();
+        }
+        
+        function stopMonitoringCamera() {
+            isMonitoring = false;
+            document.getElementById('stability-indicator').classList.add('hidden');
+            document.getElementById('lighting-indicator').classList.add('hidden');
+        }
+        
+        function calculateFrameDifference(frame1, frame2) {
+            // Simple pixel difference calculation
+            const ctx1 = frame1.getContext('2d');
+            const ctx2 = frame2.getContext('2d');
+            
+            const data1 = ctx1.getImageData(0, 0, frame1.width, frame1.height).data;
+            const data2 = ctx2.getImageData(0, 0, frame2.width, frame2.height).data;
+            
+            let diff = 0;
+            for (let i = 0; i < data1.length; i += 4) {
+                diff += Math.abs(data1[i] - data2[i]);         // R
+                diff += Math.abs(data1[i + 1] - data2[i + 1]); // G
+                diff += Math.abs(data1[i + 2] - data2[i + 2]); // B
+            }
+            
+            // Normalize the difference
+            return diff / (frame1.width * frame1.height * 3 * 255);
+        }
+        
+        // Check if image meets quality requirements
+        function checkImageQuality(imageDataUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = function() {
+                    const brightness = getImageBrightness(img);
+                    let issues = [];
+                    
+                    if (brightness < 50) {
+                        issues.push('Image is too dark');
+                    } else if (brightness > 200) {
+                        issues.push('Image is too bright');
+                    }
+                    
+                    // Add more quality checks here (blur, contrast, etc.)
+                    
+                    if (issues.length > 0) {
+                        resolve({ isGood: false, reason: issues.join('. ') });
+                    } else {
+                        resolve({ isGood: true });
+                    }
+                };
+                img.src = imageDataUrl;
+            });
+        }
+
+        // Helper function to calculate image brightness
+        function getImageBrightness(img) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 16;
+            canvas.height = 16;
+            
+            ctx.drawImage(img, 0, 0, 16, 16);
+            const imageData = ctx.getImageData(0, 0, 16, 16).data;
+            let brightness = 0;
+            
+            for (let i = 0; i < imageData.length; i += 4) {
+                brightness += (imageData[i] + imageData[i + 1] + imageData[i + 2]) / 3;
+            }
+            
+            return brightness / (imageData.length / 4);
+        }
+
+        // Update status message
+        function updateStatusMessage(message, type = 'info') {
+            const statusEl = document.getElementById('status-text');
+            if (!statusEl) return;
+            
+            statusEl.textContent = message;
+            statusEl.className = 'bg-black bg-opacity-70 text-white px-4 py-2 rounded-lg text-center max-w-xs';
+            
+            // Add type-based styling
+            if (type === 'error') {
+                statusEl.classList.add('bg-red-600', 'bg-opacity-90');
+            } else if (type === 'success') {
+                statusEl.classList.add('bg-green-600', 'bg-opacity-90');
+            } else if (type === 'warning') {
+                statusEl.classList.add('bg-yellow-600', 'bg-opacity-90');
+            }
+            
+            // Auto-clear after delay
+            if (window.statusTimeout) clearTimeout(window.statusTimeout);
+            if (type !== 'info') {
+                window.statusTimeout = setTimeout(() => {
+                    updateStatusMessage('Position your face in the frame');
+                }, 5000);
+            }
+        }
+        
+        // Capture Image
+        async function handleCapture() {
+            if (!state.stream) return;
+            
+            try {
+                captureBtn.disabled = true;
+                updateStatusMessage('Processing image...', 'info');
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                const ctx = canvas.getContext('2d');
+                ctx.scale(-1, 1);
+                ctx.drawImage(video, -canvas.width, 0);
+                
+                const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                const imageData = imageDataUrl.split(',')[1];
+                const currentAngle = state.steps[state.currentStep];
+                
+                // Check image quality
+                const qualityCheck = await checkImageQuality(imageDataUrl);
+                if (!qualityCheck.isGood) {
+                    updateStatusMessage(`Image quality issue: ${qualityCheck.reason}`, 'warning');
+                    if (confirm(`Image quality issue: ${qualityCheck.reason}. Retake?`)) {
+                        captureBtn.disabled = false;
+                        return;
+                    }
+                }
+                
+                // Store locally
+                state.captures[currentAngle] = imageData;
+                updateCapturedPreview(currentAngle, imageDataUrl);
+                
+                // Send via WebSocket
+                if (state.socket?.readyState === WebSocket.OPEN) {
+                    state.socket.send(JSON.stringify({
+                        type: 'capture',
+                        angle: currentAngle,
+                        image_data: imageData,
+                        client_id: state.clientId,
+                        timestamp: new Date().toISOString()
+                    }));
+                }
+                
+            } catch (error) {
+                console.error('Capture error:', error);
+                alert('Error capturing image. Please try again.');
+                captureBtn.disabled = false;
+                
+                // Restart camera on error
+                if (!state.stream) {
+                    await initializeCamera();
+                }
+            }
+        }
+
+        // Handle Capture Success from Server
+        function handleCaptureSuccess(data) {
+            console.log('Received capture success:', data);
+            const currentAngle = state.steps[state.currentStep];
+            
+            // Mark current step as completed
+            markStepCompleted(state.currentStep);
+            
+            // Update preview for the current capture
+            if (data.image_url) {
+                updateCapturedPreview(currentAngle, data.image_url);
+            }
+            
+            // Move to next step
+            state.currentStep++;
+            
+            if (state.currentStep < state.steps.length) {
+                // More captures needed
+                updateCurrentStep();
+                captureBtn.disabled = false;
+            } else {
+                console.log('All captures complete, preparing for analysis...');
+                
+                // Disable capture button during transition
+                captureBtn.disabled = true;
+                state.allCapturesComplete = true;
+                
+                // 🔧 AUTO-START: Set a backup timeout in case WebSocket message is delayed
+                console.log('🔧 [CAPTURE SUCCESS] Setting backup auto-start timeout (5 seconds)');
+                setTimeout(() => {
+                    if (state.allCapturesComplete && !state.analysisStarted) {
+                        console.log('⏰ [BACKUP] WebSocket timeout - force starting analysis now!');
+                        startAnalysis();
+                    }
+                }, 5000);
+                
+                // 🔧 FIX: Don't auto-start analysis here - let the WebSocket handler show the button
+                console.log('🎯 [CAPTURE SUCCESS] All captures complete, waiting for WebSocket all_captures_complete message');
+                // The handleAllCapturesComplete function will handle showing the Start Analysis button
+            }
+        }
+
+        // 🗑️ Removed duplicate handleAllCapturesComplete function - using the improved version below
+
+        function handleCaptureError(data) {
+            console.error('Capture error:', data);
+            captureBtn.disabled = false;
+        }
+
+        function handleCaptureInstruction(data) {
+            console.log('Received capture instruction:', data);
+            const currentAngle = data.angle;
+            const instruction = stepInstructions[currentAngle];
+            
+            currentInstruction.textContent = instruction.title;
+            instructionDetail.textContent = instruction.detail;
+            
+            // Update step indicators based on progress
+            state.steps.forEach((step, index) => {
+                const stepElement = document.getElementById(`step-${step}-number`);
+                if (index < data.progress.current) {
+                    stepElement.className = 'step-number step-completed';
+                    stepElement.innerHTML = '✓';
+                } else if (index === data.progress.current) {
+                    stepElement.className = 'step-number step-active';
+                    stepElement.textContent = index + 1;
+                } else {
+                    stepElement.className = 'step-number step-pending';
+                    stepElement.textContent = index + 1;
+                }
+            });
+        }
+
+        function stopCamera() {
+            stopMonitoringCamera();
+            if (state.stream) {
+                state.stream.getTracks().forEach(track => track.stop());
+                state.stream = null;
+                if (video.srcObject) {
+                    video.srcObject = null;
+                }
+                console.log('Camera stopped');
+            }
+        }
+
+        function handleAllCapturesComplete(data) {
+            console.log('🎉 [FRONTEND] All captures complete received:', data);
+            
+            // Stop the camera now that all captures are done
+            stopCamera();
+            
+            console.log('📱 [FRONTEND] Hiding camera section...');
+            document.getElementById('camera-section').style.display = 'none';
+            
+            console.log('📋 [FRONTEND] Showing captured section...');
+            capturedSection.style.display = 'block';
+            
+            // Show the manual analysis section and button (do not auto-start analysis)
+            console.log('🚀 [FRONTEND] Auto-starting analysis - no manual button needed');
+            manualAnalysisSection.style.display = 'flex'; // Show the Start Analysis button
+            const analysisSection = document.getElementById('analysis-section');
+            analysisSection.style.display = 'none'; // Hide analysis section until analysis starts
+            
+            // Update UI state
+            state.allCapturesComplete = true;
+            state.analysisStarted = false; // Ensure analysisStarted is false
+            console.log('✅ [FRONTEND] All captures complete handling finished');
+            
+            // Remove any auto-start or timeout logic
+        }
+
+        function handleAnalysisStarted(data) {
+            console.log('Analysis started:', data);
+            analysisSection.style.display = 'block';
+            progressFill.style.width = '0%'; // Reset progress bar
+            analysisStatus.textContent = 'Starting analysis...';
+            analysisDetail.textContent = 'This may take a few moments';
+        }
+
+        function handleError(data) {
+            console.error('Server error:', data);
+            alert(`Server error: ${data.message || 'Unknown error'}`);
+            // Optionally, redirect or show a user-friendly message
+        }
+
+        // Update Current Step
+        function updateCurrentStep() {
+            const currentAngle = state.steps[state.currentStep];
+            const instruction = stepInstructions[currentAngle];
+            
+            currentInstruction.textContent = instruction.title;
+            instructionDetail.textContent = instruction.detail;
+            
+            // Update step indicators
+            state.steps.forEach((step, index) => {
+                const stepElement = document.getElementById(`step-${step}-number`);
+                if (index < state.currentStep) {
+                    stepElement.className = 'step-number step-completed';
+                    stepElement.innerHTML = '✓';
+                } else if (index === state.currentStep) {
+                    stepElement.className = 'step-number step-active';
+                    stepElement.textContent = index + 1;
+                } else {
+                    stepElement.className = 'step-number step-pending';
+                    stepElement.textContent = index + 1;
+                }
+            });
+        }
+
+        function markStepCompleted(stepIndex) {
+            const step = state.steps[stepIndex];
+            const stepElement = document.getElementById(`step-${step}-number`);
+            stepElement.className = 'step-number step-completed';
+            stepElement.innerHTML = '✓';
+        }
+
+        function updateCapturedPreview(angle, imageDataUrl) {
+            const preview = document.getElementById(`preview-${angle}`);
+            preview.className = 'captured-preview';
+            preview.innerHTML = `<img src="${imageDataUrl}" alt="${angle} view">`;
+        }
+
+        // Start Analysis
+        function startAnalysis() {
+            if (state.analysisStarted) return;
+            state.analysisStarted = true;
+            manualAnalysisSection.style.display = 'none';
+            const analysisSection = document.getElementById('analysis-section');
+            analysisSection.style.display = 'block';
+            document.getElementById('results-section').style.display = 'none';
+            // Send start_analysis message to backend
+            if (state.socket && state.socket.readyState === WebSocket.OPEN) {
+                state.socket.send(JSON.stringify({
+                    type: 'start_analysis',
+                    client_id: state.clientId,
+                    angles: state.steps
+                }));
+                console.log('🚀 [FRONTEND] Sent start_analysis message to backend');
+            } else {
+                console.error('❌ [FRONTEND] WebSocket not connected, cannot start analysis');
+            }
+        }
+
+        // Analysis steps with descriptions
+        const analysisSteps = [
+            { progress: 0, message: 'Initializing analysis...', detail: 'Preparing your images for processing' },
+            { progress: 25, message: 'Analyzing skin texture', detail: 'Examining skin surface and pores' },
+            { progress: 50, message: 'Evaluating skin tone', detail: 'Analyzing pigmentation and evenness' },
+            { progress: 75, message: 'Detecting concerns', detail: 'Identifying areas that need attention' },
+            { progress: 90, message: 'Finalizing results', detail: 'Compiling your personalized report' },
+            { progress: 100, message: 'Analysis complete!', detail: 'Your results are ready' }
+        ];
+        
+        // Current analysis step index
+        let currentStepIndex = 0;
+        
+        function updateAnalysisProgress(data) {
+            console.log('Updating analysis progress:', data);
+            const progress = Math.round((data.progress || 0) * 100);
+            const progressBar = document.getElementById('progress-fill');
+            const statusElement = document.getElementById('analysis-status');
+            const detailElement = document.getElementById('analysis-detail');
+            const stepElement = document.getElementById('analysis-step');
+            const progressText = document.getElementById('progress-text');
+            
+            // Update progress bar
+            if (progressBar) {
+                progressBar.style.width = `${progress}%`;
+                // Update gradient based on progress
+                const hue = 240 - (progress * 1.2); // Blue to purple gradient
+                progressBar.style.background = `linear-gradient(90deg, #4f46e5, hsl(${hue}, 82%, 65%))`;
+            }
+            
+            // Update progress text
+            if (progressText) {
+                progressText.textContent = `${progress}%`;
+                progressText.style.fontWeight = '600';
+                progressText.style.color = '#4f46e5';
+                
+                // Add a subtle animation to the percentage
+                progressText.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    if (progressText) progressText.style.transform = 'scale(1)';
+                }, 150);
+            }
+            
+            // Update to next step if progress threshold is crossed
+            const nextStep = analysisSteps.find(step => step.progress > currentStepIndex * 20);
+            if (nextStep && progress >= nextStep.progress) {
+                currentStepIndex = analysisSteps.indexOf(nextStep);
+                
+                if (statusElement) {
+                    statusElement.textContent = nextStep.message;
+                    statusElement.style.opacity = '0';
+                    statusElement.style.transform = 'translateY(5px)';
+                    setTimeout(() => {
+                        statusElement.style.opacity = '1';
+                        statusElement.style.transform = 'translateY(0)';
+                        statusElement.style.transition = 'all 0.3s ease';
+                    }, 10);
+                }
+                
+                if (detailElement) {
+                    detailElement.textContent = nextStep.detail;
+                    detailElement.style.opacity = '0';
+                    setTimeout(() => {
+                        detailElement.style.opacity = '1';
+                        detailElement.style.transition = 'opacity 0.3s ease';
+                    }, 50);
+                }
+                
+                if (stepElement) {
+                    stepElement.textContent = `Step ${currentStepIndex + 1} of ${analysisSteps.length - 1}: ${nextStep.message}`;
+                }
+            }
+            
+            // Update the detail message based on progress
+            if (detailElement && !data.angle) {
+                if (progress < 25) {
+                    detailElement.textContent = 'Preparing your images for analysis...';
+                } else if (progress < 50) {
+                    detailElement.textContent = 'Analyzing skin texture and pores...';
+                } else if (progress < 75) {
+                    detailElement.textContent = 'Evaluating skin tone and pigmentation...';
+                } else if (progress < 90) {
+                    detailElement.textContent = 'Detecting areas of concern...';
+                } else if (progress < 100) {
+                    detailElement.textContent = 'Finalizing your personalized report...';
+                }
+            }
+        }
+
+        function showAnalysisResults(results) {
+            console.log('Showing analysis results:', results);
+            
+            // Hide loading section and show results
+            analysisSection.style.display = 'none';
+            resultsSection.style.display = 'block';
+            
+            // Helper functions
+            const formatPercentage = (value) => value !== undefined ? `${Math.round(value)}%` : 'N/A';
+            const formatScore = (value) => value !== undefined ? `${Math.round((value || 0) * 100)}/100` : 'N/A';
+            
+            // Build concerns list
+            let concernsHtml = '<p class="text-green-600">No significant concerns detected.</p>';
+            if (results.conditions && Object.keys(results.conditions).length > 0) {
+                concernsHtml = '<ul class="list-disc pl-5 space-y-1">';
+                for (const [concern, data] of Object.entries(results.conditions)) {
+                    const severity = (data.average_severity || 0) * 100;
+                    let severityClass = 'text-green-600';
+                    if (severity > 70) severityClass = 'text-red-600';
+                    else if (severity > 30) severityClass = 'text-yellow-600';
+                    concernsHtml += `<li><span class="font-medium">${concern}</span> <span class="${severityClass}">(${Math.round(severity)}% severity)</span></li>`;
+                }
+                concernsHtml += '</ul>';
+            }
+            
+            // Build recommendations
+            let recommendationsHtml = '';
+            if (results.recommendations) {
+                const recs = results.recommendations;
+                recommendationsHtml = `
+                    <div class="space-y-4">
+                        ${recs.products?.cleanser ? `<p><span class="font-medium">Cleanser:</span> ${recs.products.cleanser}</p>` : ''}
+                        ${recs.products?.moisturizer ? `<p><span class="font-medium">Moisturizer:</span> ${recs.products.moisturizer}</p>` : ''}
+                        ${recs.products?.sunscreen ? `<p><span class="font-medium">Sunscreen:</span> ${recs.products.sunscreen}</p>` : ''}
+                        ${recs.products?.treatments?.length > 0 ? 
+                            `<p><span class="font-medium">Treatments:</span> ${recs.products.treatments.join('; ')}</p>` : ''}
+                        ${recs.daily_routine?.length > 0 ? 
+                            `<div class="mt-4"><h4 class="font-medium">Daily Routine:</h4><ul class="list-disc pl-5 mt-1">${
+                                recs.daily_routine.map(item => `<li>${item}</li>`).join('')
+                            }</ul></div>` : ''}
+                    </div>
+                `;
+            }
+            
+            // Update results content
+            const resultsContent = document.getElementById('results-content');
+            resultsContent.innerHTML = `
+                <div class="space-y-6">
+                    <!-- Summary Card -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold mb-4 text-indigo-700">Skin Analysis Summary</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="font-medium text-gray-700 mb-2">Skin Type</h4>
+                                <p class="text-lg font-medium">${results.skin_type || 'Normal'}</p>
+                                
+                                <h4 class="font-medium text-gray-700 mt-4 mb-2">Skin Tone</h4>
+                                <p class="text-lg">${results.skin_tone || 'Medium'}</p>
+                                
+                                <h4 class="font-medium text-gray-700 mt-4 mb-2">Overall Score</h4>
+                                <div class="w-full bg-gray-200 rounded-full h-4">
+                                    <div class="bg-indigo-600 h-4 rounded-full" style="width: ${(results.overall_score || 0) * 100}%"></div>
+                                </div>
+                                <p class="text-right mt-1">${formatScore(results.overall_score)}</p>
+                            </div>
+                            
+                            <div class="space-y-4">
+                                <div>
+                                    <h4 class="font-medium text-gray-700">Moisture Level</h4>
+                                    <div class="w-full bg-gray-200 rounded-full h-4 mt-1">
+                                        <div class="bg-blue-500 h-4 rounded-full" style="width: ${results.average_moisture || 0}%"></div>
+                                    </div>
+                                    <p class="text-right">${formatPercentage(results.average_moisture)}</p>
+                                </div>
+                                
+                                <div>
+                                    <h4 class="font-medium text-gray-700">Oiliness</h4>
+                                    <div class="w-full bg-gray-200 rounded-full h-4 mt-1">
+                                        <div class="bg-yellow-500 h-4 rounded-full" style="width: ${results.average_oiliness || 0}%"></div>
+                                    </div>
+                                    <p class="text-right">${formatPercentage(results.average_oiliness)}</p>
+                                </div>
+                                
+                                <div>
+                                    <h4 class="font-medium text-gray-700">Pores Visibility</h4>
+                                    <div class="w-full bg-gray-200 rounded-full h-4 mt-1">
+                                        <div class="bg-purple-500 h-4 rounded-full" style="width: ${results.average_pores || 0}%"></div>
+                                    </div>
+                                    <p class="text-right">${formatPercentage(results.average_pores)}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Concerns Card -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold mb-4 text-indigo-700">Skin Concerns</h3>
+                        ${concernsHtml}
+                    </div>
+                    
+                    <!-- Recommendations Card -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold mb-4 text-indigo-700">Personalized Recommendations</h3>
+                        ${recommendationsHtml}
+                    </div>
+                    
+                    <!-- Captured Images -->
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-semibold mb-4 text-indigo-700">Your Captured Images</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            ${Object.entries(state.captures).map(([angle, imgData]) => `
+                                <div class="bg-gray-100 p-2 rounded-lg">
+                                    <div class="font-medium text-gray-700 mb-2 capitalize">${angle} View</div>
+                                    <img src="data:image/jpeg;base64,${imgData}" alt="${angle} view" class="w-full h-40 object-cover rounded">
+                                </div>`
+                            ).join('')}
+                        </div>
+                        ${(results.recommendations?.cleanser ? [`<p class="text-sm">• ${results.recommendations.cleanser}</p>`] : [])
+                          .concat(results.recommendations?.moisturizer ? [`<p class="text-sm">• ${results.recommendations.moisturizer}</p>`] : [])
+                          .concat(results.recommendations?.sunscreen ? [`<p class="text-sm">• ${results.recommendations.sunscreen}</p>`] : [])
+                          .concat(results.recommendations?.treatments || ['<p class="text-sm">• Keep up your current skincare routine!</p>'])
+                          .join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Start New Analysis
+        function startNewAnalysis() {
+            // Reset state
+            state.currentStep = 0;
+            state.captures = {};
+            state.allCapturesComplete = false;
+            
+            // Reset UI
+            resultsSection.style.display = 'none';
+            analysisSection.style.display = 'none';
+            capturedSection.style.display = 'none';
+            document.getElementById('camera-section').style.display = 'block';
+            
+            // Reset previews
+            ['front', 'left', 'right'].forEach(angle => {
+                const preview = document.getElementById(`preview-${angle}`);
+                preview.className = 'captured-preview empty';
+                preview.innerHTML = `<span>${angle.charAt(0).toUpperCase() + angle.slice(1)}</span>`;
+            });
+            
+            updateCurrentStep();
+            captureBtn.disabled = false;
+            
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Initialize app when page loads
+        document.addEventListener('DOMContentLoaded', initializeApp);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (state.stream) {
+                state.stream.getTracks().forEach(track => track.stop());
+            }
+            if (state.socket) {
+                state.socket.close();
+            }
+        });
+    </script>
+</body>
+</html> 

@@ -1,0 +1,440 @@
+"""
+Skin Analysis Service
+
+This module provides the core functionality for skin analysis,
+including image capture, processing, and analysis with Supabase integration.
+"""
+import os
+import uuid
+import time
+import logging
+import asyncio
+import io
+import base64
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple, Any, Union
+from pathlib import Path
+import cv2
+import numpy as np
+from PIL import Image
+from supabase import create_client, Client
+
+from app.models.skin_analyzer import SkinAnalyzer
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+class SkinAnalysisService:
+    """Service class for handling skin analysis operations with Supabase integration."""
+    
+    def __init__(self):
+        """Initialize the skin analysis service with Supabase client."""
+        self.analyzer = SkinAnalyzer()
+        
+        # Initialize Supabase client with regular key
+        if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
+            raise ValueError("SUPABASE_URL and SUPABASE_KEY are required in the configuration")
+            
+        self.supabase: Client = create_client(
+            settings.SUPABASE_URL,
+            settings.SUPABASE_KEY
+        )
+        
+        # Create a separate client with service role for admin operations if available
+        self.admin_supabase = None
+        if settings.SUPABASE_SERVICE_ROLE_KEY:
+            self.admin_supabase = create_client(
+                settings.SUPABASE_URL,
+                settings.SUPABASE_SERVICE_ROLE_KEY
+            )
+        self.bucket_name = "skin-scans"
+        
+        # Try to get the bucket using the regular client
+        bucket_exists = False
+        try:
+            result = self.supabase.storage.get_bucket(self.bucket_name)
+            if result:
+                logger.info(f"✅ Using existing bucket: {self.bucket_name}")
+                bucket_exists = True
+                return  # Bucket exists, no need to create
+        except Exception as e:
+            logger.debug(f"Bucket check failed (expected if bucket doesn't exist): {e}")
+        
+        # If bucket doesn't exist, try to create it
+        if not bucket_exists:
+            if self.admin_supabase:
+                try:
+                    # Try to create the bucket with service role
+                    result = self.admin_supabase.storage.create_bucket(
+                        id=self.bucket_name,
+                        name=self.bucket_name
+                    )
+                    logger.info(f"✅ Successfully created bucket: {self.bucket_name}")
+                    return
+                except Exception as create_error:
+                    create_error_str = str(create_error).lower()
+                    if "already exists" in create_error_str or "duplicate" in create_error_str:
+                        logger.info(f"✅ Bucket {self.bucket_name} already exists")
+                        return
+                    else:
+                        logger.error(f"❌ Failed to create bucket: {create_error}")
+                        logger.error(f"Error type: {type(create_error)}")
+                        logger.error(f"Error details: {str(create_error)}")
+                        
+                        # Check if it's a permissions issue
+                        if "permission" in create_error_str or "unauthorized" in create_error_str:
+                            logger.error("🔐 Permission issue detected. Make sure SUPABASE_SERVICE_ROLE_KEY has storage admin permissions.")
+                        
+            else:
+                logger.warning("⚠️ No service role key provided - cannot create bucket automatically")
+            
+            # Final warning if we couldn't create the bucket
+            logger.warning(f"""
+            ❌ Could not automatically create the Supabase bucket '{self.bucket_name}'.
+            
+            Please create it manually:
+            1. Go to Supabase Dashboard > Storage
+            2. Click 'Create new bucket'
+            3. Name: '{self.bucket_name}'
+            4. Enable 'Public access'
+            5. Click 'Create bucket'
+            
+            Or check that your SUPABASE_SERVICE_ROLE_KEY has proper permissions.
+            """)
+    
+    async def _upload_to_supabase(self, image_data: bytes, filename: str) -> str:
+        """
+        Upload image to Supabase Storage.
+        
+        Args:
+            image_data: Raw image bytes
+            filename: Name to save the file as
+            
+        Returns:
+            Public URL of the uploaded file
+        """
+        path = f"scans/{filename}"
+        
+        # Try with admin client first if available
+        if self.admin_supabase:
+            try:
+                # Upload the file with bytes directly
+                result = self.admin_supabase.storage.from_(self.bucket_name).upload(
+                    path=path,
+                    file=image_data,
+                    file_options={"content-type": "image/jpeg"}
+                )
+                
+                if hasattr(result, 'error') and result.error:
+                    raise Exception(f"Admin upload failed: {result.error}")
+            
+                # Get public URL
+                url = self.admin_supabase.storage.from_(self.bucket_name).get_public_url(path)
+                logger.info(f"Successfully uploaded {filename} using admin client")
+                return url
+                
+            except Exception as admin_error:
+                logger.warning(f"Admin upload failed, will try regular client: {admin_error}")
+        
+        # If admin client failed or not available, try with regular client
+        try:
+            # Upload the file with bytes directly
+            result = self.supabase.storage.from_(self.bucket_name).upload(
+                path=path,
+                file=image_data,
+                file_options={"content-type": "image/jpeg"}
+            )
+            
+            if hasattr(result, 'error') and result.error:
+                raise Exception(f"Regular client upload failed: {result.error}")
+        
+            # Get public URL
+            url = self.supabase.storage.from_(self.bucket_name).get_public_url(path)
+            logger.info(f"Successfully uploaded {filename} using regular client")
+            return url
+            
+        except Exception as e:
+            error_msg = f"Failed to upload {filename} to Supabase: {str(e)}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+    
+    async def save_analysis(self, client_id: str, angle: str, image_data: bytes, analysis: dict) -> str:
+        """
+        Save analysis to Supabase.
+        
+        Args:
+            client_id: Unique client identifier
+            angle: The angle of the capture
+            image_data: Raw image bytes
+            analysis: Analysis results
+            
+        Returns:
+            Analysis ID from the database
+        """
+        try:
+            # Upload image
+            filename = f"{client_id}_{angle}_{int(time.time())}.jpg"
+            image_url = await self._upload_to_supabase(image_data, filename)
+            
+            # Save analysis to database
+            result = self.supabase.table("skin_analyses").insert({
+                "client_id": client_id,
+                "angle": angle,
+                "image_url": image_url,
+                "analysis": analysis,
+                "created_at": datetime.utcnow().isoformat()
+            }).execute()
+            
+            if not result.data:
+                raise ValueError("Failed to save analysis to database")
+                
+            return result.data[0]['id']
+            
+        except Exception as e:
+            logger.error(f"Error saving analysis: {str(e)}")
+            raise
+    
+    async def capture_image(self, image_data: bytes, angle: str, client_id: str) -> Dict[str, Any]:
+        """
+        Process and store a captured image.
+        
+        Args:
+            image_data: Base64 encoded image data or bytes
+            angle: The angle of the capture
+            client_id: Unique client identifier
+            
+        Returns:
+            Dictionary with capture results
+        """
+        try:
+            logger.info(f"Starting image processing for angle: {angle}")
+            
+            # Convert base64 to bytes if needed
+            try:
+                if isinstance(image_data, str):
+                    logger.debug("Converting base64 string to bytes")
+                    if ',' in image_data:
+                        image_data = image_data.split(',')[1]
+                    image_bytes = base64.b64decode(image_data)
+                else:
+                    image_bytes = image_data
+                
+                if not image_bytes:
+                    raise ValueError("No image data provided")
+                    
+            except Exception as e:
+                logger.error(f"Error decoding image data: {str(e)}")
+                raise ValueError(f"Invalid image data: {str(e)}")
+            
+            try:
+                # Convert to PIL Image and save temporarily for analysis
+                logger.debug("Converting image for analysis")
+                image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+                
+                # Save to temporary file for analysis
+                import tempfile
+                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
+                temp_path = temp_file.name
+                temp_file.close()
+                
+                image.save(temp_path, 'JPEG', quality=95)
+                logger.debug(f"Saved temporary image to: {temp_path}")
+                    
+            except Exception as e:
+                logger.error(f"Error processing image: {str(e)}")
+                raise ValueError(f"Image processing failed: {str(e)}")
+            
+            try:
+                # Perform analysis
+                logger.debug("Performing skin analysis")
+                analysis_result = self.analyzer.analyze_skin(temp_path)
+                
+                # Clean up temporary file
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass  # Ignore cleanup errors
+                
+                # Handle case where no face is detected
+                if not analysis_result or (isinstance(analysis_result, dict) and analysis_result.get('status') == 'error'):
+                    # Create a basic analysis result for no face detected
+                    logger.warning("No face detected, creating basic analysis result")
+                    analysis = {
+                        'status': 'no_face_detected',
+                        'message': 'No face detected in the image. Please ensure good lighting and that your face is clearly visible.',
+                        'skin_type': 'unknown',
+                        'skin_tone': 'unknown',
+                        'perceived_age': 0,
+                        'eye_age': 0,
+                        'concerns': {},
+                        'moisture_level': 0.0,
+                        'oiliness': 0.0,
+                        'pores_visibility': 0.0,
+                        'redness': 0.0,
+                        'texture_score': 0.0,
+                        'analysis_timestamp': datetime.now().isoformat(),
+                        'recommendations': ['Please retake the photo with better lighting and face positioning']
+                    }
+                else:
+                    # Convert SkinAnalysisResult to dictionary if it's not already a dict
+                    if hasattr(analysis_result, '__dict__'):
+                        # It's a dataclass/object, convert to dict
+                        analysis = {'status': 'success'}
+                        for field_name, field_value in analysis_result.__dict__.items():
+                            if hasattr(field_value, '__dict__'):  # Handle nested objects
+                                analysis[field_name] = field_value.__dict__
+                            elif hasattr(field_value, 'value'):  # Handle enums
+                                analysis[field_name] = field_value.value
+                            elif isinstance(field_value, datetime.datetime):  # Handle datetime
+                                analysis[field_name] = field_value.isoformat()
+                            else:
+                                analysis[field_name] = field_value
+                    else:
+                        # It's already a dict
+                        analysis = analysis_result
+                        analysis['status'] = 'success'
+                    
+            except Exception as e:
+                logger.error(f"Analysis failed: {str(e)}")
+                # Clean up temporary file on error
+                try:
+                    os.unlink(temp_path)
+                except:
+                    pass
+                
+                # Create error analysis result instead of raising exception
+                logger.warning("Analysis failed, creating error result")
+                analysis = {
+                    'status': 'error',
+                    'message': f'Analysis failed: {str(e)}',
+                    'skin_type': 'unknown',
+                    'skin_tone': 'unknown',
+                    'perceived_age': 0,
+                    'eye_age': 0,
+                    'concerns': {},
+                    'moisture_level': 0.0,
+                    'oiliness': 0.0,
+                    'pores_visibility': 0.0,
+                    'redness': 0.0,
+                    'texture_score': 0.0,
+                    'analysis_timestamp': datetime.now().isoformat(),
+                    'recommendations': ['Please retake the photo and ensure good image quality']
+                }
+            
+            try:
+                # Save to Supabase
+                logger.debug("Saving analysis to database")
+                analysis_id = await self.save_analysis(
+                    client_id=client_id,
+                    angle=angle,
+                    image_data=image_bytes,
+                    analysis=analysis
+                )
+                
+                if not analysis_id:
+                    raise ValueError("Failed to save analysis to database")
+                
+                logger.info(f"Successfully processed image for angle: {angle}")
+                return {
+                    'success': True,
+                    'analysis_id': analysis_id,
+                    'angle': angle,
+                    'analysis': analysis
+                }
+                
+            except Exception as e:
+                logger.error(f"Error saving analysis: {str(e)}")
+                raise ValueError(f"Failed to save analysis: {str(e)}")
+            
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error in capture_image: {error_msg}", exc_info=True)
+            return {
+                'success': False,
+                'error': error_msg,
+                'angle': angle
+            }
+    
+    async def analyze_skin(self, image_path: str, angle: str) -> Dict:
+        """
+        Analyze a single captured image.
+        
+        Args:
+            image_path: Path to the image file
+            angle: The angle of the capture
+            
+        Returns:
+            Dictionary containing analysis results
+        """
+        try:
+            # Load the image
+            image = cv2.imread(image_path)
+            if image is None:
+                raise ValueError(f"Could not load image: {image_path}")
+                
+            # Perform analysis
+            result = self.analyzer.analyze(image)
+            
+            # Add angle-specific information
+            result['angle'] = angle
+            result['timestamp'] = time.time()
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error analyzing image: {str(e)}")
+            raise
+    
+    def generate_final_report(self, analysis_results: List[Dict]) -> Dict:
+        """
+        Generate a final analysis report from multiple angle analyses.
+        
+        Args:
+            analysis_results: List of analysis results from different angles
+            
+        Returns:
+            Combined analysis report
+        """
+        if not analysis_results:
+            return {"error": "No analysis results provided"}
+            
+        # Combine results (simplified - in reality, you'd want more sophisticated logic)
+        combined = {
+            "analysis_id": f"analysis_{uuid.uuid4().hex}",
+            "timestamp": time.time(),
+            "angles_analyzed": [r.get('angle', 'unknown') for r in analysis_results],
+            "overall_analysis": {},
+            "recommendations": [],
+            "severity": "mild"  # Default
+        }
+        
+        # Aggregate analysis (simplified)
+        for result in analysis_results:
+            if 'analysis' in result:
+                for k, v in result['analysis'].items():
+                    if k not in combined['overall_analysis']:
+                        combined['overall_analysis'][k] = v
+        
+        # Generate recommendations
+        combined['recommendations'] = self._generate_recommendations(combined['overall_analysis'])
+        
+        return combined
+    
+    def _generate_recommendations(self, analysis: Dict) -> List[str]:
+        """Generate recommendations based on analysis results."""
+        recommendations = []
+        
+        # Example recommendations (customize based on your analysis)
+        if analysis.get('acne_severity') in ['moderate', 'severe']:
+            recommendations.append("Consider using a salicylic acid cleanser.")
+            
+        if analysis.get('wrinkles_present', False):
+            recommendations.append("Use sunscreen daily to prevent further sun damage.")
+            
+        if analysis.get('hydration_level', 0) < 0.5:
+            recommendations.append("Your skin appears dry. Consider using a more hydrating moisturizer.")
+        
+        if not recommendations:
+            recommendations.append("Your skin appears healthy. Maintain your current routine.")
+            
+        return recommendations 

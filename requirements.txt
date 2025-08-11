@@ -1,0 +1,38 @@
+# Core dependencies
+fastapi
+uvicorn[standard]
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+requests
+Pillow
+numpy
+scikit-image
+python-socketio
+python-engineio
+websockets
+Jinja2
+pydantic-settings
+
+# Computer Vision
+opencv-python-headless
+
+# Machine Learning
+torch
+torchvision
+transformers
+accelerate
+
+# Additional Dependencies
+einops
+timm
+
+# Hugging Face Hub
+huggingface-hub
+
+# Database
+supabase
+
+# Google Generative AI
+google-generativeai
