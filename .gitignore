@@ -26,19 +26,3 @@ ENV/
 
 # Environment variables
 .env
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# Uploads directory
-uploads/
-
-# Local development
-.DS_Store
-Thumbs.db

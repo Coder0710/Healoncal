@@ -1,38 +1,56 @@
 # Core dependencies
-fastapi
-uvicorn[standard]
-python-multipart
-python-jose[cryptography]
-passlib[bcrypt]
-python-dotenv
-requests
-Pillow
-numpy
-scikit-image
-python-socketio
-python-engineio
-websockets
-Jinja2
-pydantic-settings
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+gunicorn==21.2.0
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+requests==2.31.0
+Pillow==10.3.0
+numpy==1.26.4
+scikit-image==0.22.0
+python-socketio==5.10.0
+python-engineio==4.8.2
+websockets==12.0
+Jinja2==3.1.2
+pydantic-settings==2.1.0
+python-multipart==0.0.6
 
 # Computer Vision
-opencv-python-headless
+opencv-python-headless==4.9.0.80
 
-# Machine Learning
-torch
-torchvision
-transformers
-accelerate
+# Machine Learning (CPU-only versions)
+torch==2.1.0+cpu --index-url https://download.pytorch.org/whl/cpu
+torchvision==0.16.0+cpu --index-url https://download.pytorch.org/whl/cpu
+transformers==4.36.2
+accelerate==0.26.1
 
 # Additional Dependencies
-einops
-timm
+einops==0.7.0
+timm==0.9.16
 
 # Hugging Face Hub
-huggingface-hub
+huggingface-hub==0.20.3
 
 # Database
-supabase
+supabase==2.3.4
 
 # Google Generative AI
-google-generativeai
+google-generativeai==0.3.2
+
+# Production
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+python-slugify==8.0.1
+
+# Caching
+redis==5.0.1
+
+# Monitoring
+sentry-sdk[fastapi]==1.39.1
+
+# Security
+bcrypt==4.0.1
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6

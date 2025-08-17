@@ -75,27 +75,39 @@ async def root():
         ]
     }
 
+from fastapi.responses import JSONResponse
+from fastapi import status
+
 # Error handlers
 @app.exception_handler(404)
 async def not_found_exception_handler(request, exc):
-    return {
-        "error": "Not Found",
-        "message": f"The requested URL {request.url} was not found"
-    }
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content={
+            "error": "Not Found",
+            "message": f"The requested URL {request.url} was not found"
+        }
+    )
 
 @app.exception_handler(422)
 async def validation_exception_handler(request, exc):
-    return {
-        "error": "Validation Error",
-        "message": str(exc)
-    }
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "Validation Error",
+            "message": str(exc)
+        }
+    )
 
 @app.exception_handler(500)
 async def internal_exception_handler(request, exc):
-    return {
-        "error": "Internal Server Error",
-        "message": "An unexpected error occurred"
-    }
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "Internal Server Error",
+            "message": "An unexpected error occurred"
+        }
+    )
 
 if __name__ == "__main__":
     uvicorn.run(
